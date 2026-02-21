@@ -39,6 +39,7 @@ int main()
 		// 	exit(0);
 		// }
 
+		
 		int pipes[seq_l-1][2] ; // tableau de descripteurs pour des pipes
 		int pids[seq_l]; // tableau pour memoriser des pids, pour une bonne gestion de waitpid
 
