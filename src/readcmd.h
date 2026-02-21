@@ -17,6 +17,7 @@ struct cmdline {
 	char *in;	/* If not null : name of file for input redirection. */
 	char *out;	/* If not null : name of file for output redirection. */
 	char ***seq;	/* See comment below */
+	int is_on_backgr; // 1 si la sequence de commandes est lancé en arriere plan, 0 sinon
 };
 
 /* Field seq of struct cmdline :

@@ -1,0 +1,5 @@
+#
+# test05.txt - Tester le fonctionnement du handler
+#
+sleep 3 &
+echo Hello

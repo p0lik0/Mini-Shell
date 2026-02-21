@@ -6,11 +6,26 @@
 #include <stdlib.h>
 #include "readcmd.h"
 #include "csapp.h"
+#include <signal.h>
 
 #define MAX67 1024
 
-int main()
-{
+void sigchld_handler(int sig) {
+	int saved_errno = errno;
+	int pid;
+	// tq on a des fils en etat de zombie on les ramasse
+	while ((pid = waitpid(-1, NULL,  WNOHANG|WUNTRACED)) > 0);
+
+	// si on a une erreur outre celle que tous les fils ont été déjà ramassés 
+	if(pid==-1 && errno!=ECHILD) unix_error("waitpid error");
+
+	errno = saved_errno;
+}
+
+
+int main(){
+	Signal(SIGCHLD, sigchld_handler);
+
 	while (1) {
 		struct cmdline *l;
 
@@ -35,18 +50,15 @@ int main()
 		}
 		if (seq_l == 0) continue; // si 0 commandes continue boucle
 
-		// if(strcmp(l->seq[0][0], "quit")==0){ // si la commande courrante est "quit" == commence par "quit"
-		// 	exit(0);
-		// }
+		if(strcmp(l->seq[0][0], "quit")==0){ // si la commande courrante est "quit" == commence par "quit"
+			exit(0);
+		}
 
-		
+
 		int pipes[seq_l-1][2] ; // tableau de descripteurs pour des pipes
 		int pids[seq_l]; // tableau pour memoriser des pids, pour une bonne gestion de waitpid
-
 		for (int i=0; i<seq_l; i++) { // pour chaque commande d une suite de commandes
-			if(strcmp(l->seq[i][0], "quit")==0){ // si la commande courrante est "quit" == commence par "quit"
-				exit(0);
-			}
+			
 			// creation d un pipe pour faire communiquer fils courrant et fils executant la commande suivante
 			if (i<seq_l-1) {
 				if (pipe(pipes[i]) < 0) {
@@ -57,6 +69,7 @@ int main()
 
 			int pid;
 			if ((pid = Fork()) == 0) { //si fils
+
 				if (l->in && i==0) { // si on a un input non standart 
 				// (dans le cas de sequence de commandes pipées possible que pour la 1re commande)
 					int fd_in = open(l->in, O_RDONLY);
@@ -67,7 +80,16 @@ int main()
 					dup2(fd_in, 0); // remplacement de input original
 					close(fd_in);
 				}
-				else if(i>0){ // si c un commande non 1re dans une sequence >1 commandes
+				else if (l->is_on_backgr && i==0) {
+					int fd_null = open("/dev/null", O_RDONLY);
+					if (fd_null<0) {
+						perror("/dev/null");
+						exit(1);
+					}
+					dup2(fd_null, 0);
+					close(fd_null);
+				}
+				else if(i>0){ // si ce n est pas la 1re commande dans une sequence de commandes
 					dup2(pipes[i-1][0], 0); 
 				}
 
@@ -108,17 +130,27 @@ int main()
 				}
 				exit(1);
 			}
+
 			if(i>0){
 				close(pipes[i-1][0]);
 				close(pipes[i-1][1]);
 			}
 			pids[i] = pid; // on sauvegarde le pid du fils crée
 		}
-
-		for(int i=0; i<seq_l; i++){
-			waitpid(pids[i], NULL, 0);
+		if(!l->is_on_backgr){
+			for(int i=0; i<seq_l; i++){
+				while(waitpid(pids[i], NULL, 0) < 0){ 
+					// dans le cas où waitpid a été interrompu par sigchld_handler - continuer la boucle 
+					if(errno == EINTR) continue; 
+					// dans le cas où le fils pids[i] a été déjà ramassé par handler - break la boucle 
+					else if(errno==ECHILD) break; 
+					else{ // sinon c une comportement non prevue 
+						perror("waitpid"); 
+						break;
+					}
+				}
+			}
 		}
-
 		/* Display each command of the pipe */
 		// for (int i=0; l->seq[i]!=0; i++) {
 		// 	char **cmd = l->seq[i];

@@ -95,6 +95,10 @@ static char **split_in_words(char *line)
 			w = "|";
 			cur++;
 			break;
+		case '&':
+			w = "&";
+			cur++;
+			break;
 		default:
 			/* Another word */
 			start = cur;
@@ -107,6 +111,7 @@ static char **split_in_words(char *line)
 				case '<':
 				case '>':
 				case '|':
+				case '&':
 					c = 0;
 					break;
 				default: ;
@@ -160,6 +165,7 @@ struct cmdline *readcmd(void)
 	char *w;
 	char **cmd;
 	char ***seq;
+	int count_bg;
 	size_t cmd_len, seq_len;
 
 	line = readline();
@@ -177,6 +183,7 @@ struct cmdline *readcmd(void)
 	seq = xmalloc(sizeof(char **));
 	seq[0] = 0;
 	seq_len = 0;
+	count_bg = 0;
 
 	words = split_in_words(line);
 	free(line);
@@ -189,6 +196,7 @@ struct cmdline *readcmd(void)
 	s->in = 0;
 	s->out = 0;
 	s->seq = 0;
+	s->is_on_backgr = 0;
 
 	i = 0;
 	while ((w = words[i++]) != 0) {
@@ -223,6 +231,10 @@ struct cmdline *readcmd(void)
 				s->err = "misplaced pipe";
 				goto error;
 			}
+			if(count_bg>0){ // erreur, si on avait des commandes lancées en arrier plan
+				s->err = "not possible to run one of the commands of pipe in the background, however you can run the whole pipe in the background";
+				goto error;
+			}
 
 			seq = xrealloc(seq, (seq_len + 2) * sizeof(char **));
 			seq[seq_len++] = cmd;
@@ -231,6 +243,14 @@ struct cmdline *readcmd(void)
 			cmd = xmalloc(sizeof(char *));
 			cmd[0] = 0;
 			cmd_len = 0;
+			break;
+		case '&':
+			/* Tricky : the word can only be "|" */
+			if (count_bg > 0) {
+				s->err = "too many &, current command is already sent to the background";
+				goto error;
+			}
+			count_bg += 1;
 			break;
 		default:
 			cmd = xrealloc(cmd, (cmd_len + 2) * sizeof(char *));
@@ -251,6 +271,9 @@ struct cmdline *readcmd(void)
 		free(cmd);
 	free(words);
 	s->seq = seq;
+	if(count_bg > 0){
+		s->is_on_backgr = 1;
+	}
 	return s;
 error:
 	while ((w = words[i++]) != 0) {
@@ -258,6 +281,7 @@ error:
 		case '<':
 		case '>':
 		case '|':
+		case '&':
 			break;
 		default:
 			free(w);
@@ -275,5 +299,6 @@ error:
 		free(s->out);
 		s->out = 0;
 	}
+	s->is_on_backgr = 0;
 	return s;
 }
