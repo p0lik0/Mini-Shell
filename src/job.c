@@ -98,3 +98,23 @@ void init_jobs(){
         jobs[i].cmdline[0] = '\0';
     }
 }
+
+void print_jobs(){
+    for(int i=0; i<MAXJOBS; i++){
+        if(jobs[i].state!=UNDEF){
+            printf("[%d]  %d  ", jobs[i].jid, jobs[i].pgid);
+            switch(jobs[i].state){
+                case FG :
+                case BG :
+                    printf("Running  ");
+                    break;
+                case ST :
+                    printf("Stopped  ");
+                    break;
+                default:
+            }
+            printf(jobs[i].cmdline);
+            printf("\n");
+        }
+    }
+}

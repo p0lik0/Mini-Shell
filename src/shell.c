@@ -15,9 +15,9 @@ void sigchld_handler(int sig) {
     int olderrno = errno;
     int status;
     int pid;
+
 	// tq on a des fils en etat de zombie on les ramasse
     while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
-
         job_t *j = get_job_by_pid(pid);
         if (!j)
             continue;
@@ -108,13 +108,21 @@ int main(){
 		if(strcmp(l->seq[0][0], "quit")==0){ // si la commande courrante est "quit" == commence par "quit"
 			exit(0);
 		}
-
+		if(seq_l == 1 && strcmp(l->seq[0][0], "jobs")==0){
+			print_jobs();
+			continue;
+		}
 
 		int pipes[seq_l-1][2] ; // tableau de descripteurs pour des pipes
 
 		int pgid = 0;
 		int pids[MAXNBPROC];
+
+					// masker SIGCHLD pour eviter la situation 
+			// où le fils meurt avant d'être mis dans le tableau de jobs
+			Sigprocmask(SIG_BLOCK, &mask_one, &prev_one);
 		for (int i=0; i<seq_l; i++) { // pour chaque commande d une suite de commandes
+
 			
 			// creation d un pipe pour faire communiquer fils courrant et fils executant la commande suivante
 			if (i<seq_l-1) {
@@ -124,9 +132,7 @@ int main(){
 				}
 			}
 
-			// masker SIGCHLD pour eviter la situation 
-			// où le fils meurt avant d'être mis dans le tableau de jobs
-			Sigprocmask(SIG_BLOCK, &mask_one, &prev_one);
+
 			int pid;
 			if ((pid = Fork()) == 0) { //si fils
 				// unblock SIGCHLD
@@ -187,8 +193,11 @@ int main(){
 					close(pipes[i][0]);
 					close(pipes[i][1]);
 				}
-
-				execvp(l->seq[i][0], &(l->seq[i][0]));
+				if(strcmp(l->seq[i][0], "jobs")==0){ // si la commande courrante est "jobs"
+					print_jobs();
+					exit(0);
+				}
+				else execvp(l->seq[i][0], &(l->seq[i][0]));
 				// gestion des erreur de exec
 				if (errno == ENOENT) {
 					fprintf(stderr, "%s: command not found\n", l->seq[i][0]);

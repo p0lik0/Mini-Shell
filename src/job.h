@@ -39,4 +39,7 @@ int delete_job(int jid);
 // initialiser le tableau.
 void init_jobs();
 
+// afficher les jobs
+void print_jobs();
+
 #endif
