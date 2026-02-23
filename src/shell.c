@@ -105,22 +105,68 @@ int main(){
 		}
 		if (seq_l == 0) continue; // si 0 commandes continue boucle
 
-		if(strcmp(l->seq[0][0], "quit")==0){ // si la commande courrante est "quit" == commence par "quit"
-			exit(0);
-		}
-		if(seq_l == 1 && strcmp(l->seq[0][0], "jobs")==0){
-			print_jobs();
-			continue;
-		}
-
 		int pipes[seq_l-1][2] ; // tableau de descripteurs pour des pipes
 
 		int pgid = 0;
 		int pids[MAXNBPROC];
 
-					// masker SIGCHLD pour eviter la situation 
-			// où le fils meurt avant d'être mis dans le tableau de jobs
-			Sigprocmask(SIG_BLOCK, &mask_one, &prev_one);
+
+		// masker SIGCHLD pour eviter la situation 
+		// où le fils meurt avant d'être mis dans le tableau de jobs	
+		Sigprocmask(SIG_BLOCK, &mask_one, &prev_one);
+
+		if(strcmp(l->seq[0][0], "quit")==0){ // si la commande courrante est "quit" == commence par "quit"
+			exit(0);
+		} else if(strcmp(l->seq[0][0], "fg")==0 
+					|| strcmp(l->seq[0][0], "bg")==0
+					|| strcmp(l->seq[0][0], "stop")==0){
+
+			job_state new_state = strcmp(l->seq[0][0], "fg")==0 ? FG : (strcmp(l->seq[0][0], "bg")==0 ? BG : ST );
+			if(l->seq[0][1][0]=='%'){
+				int jid = atoi(l->seq[0][1]+1);
+				if(jid != 0){
+					job_t * j = get_job_by_jid(jid);
+					if(j==NULL){
+						fprintf(stderr, "%s: job [%d] doesn't exist\n", l->seq[0][0], jid);
+						exit(1);
+					}
+					if(new_state==ST){
+						Kill(-j->pgid, SIGTSTP);
+					}
+					else{
+						j->state = new_state;
+						Kill(-j->pgid, SIGCONT);
+					}
+				}
+				else{
+					fprintf(stderr, "%s: bad arguments (Usage : fg %%[jid] or fg [pid])\n", l->seq[0][0]);
+					exit(1);
+				}
+			} else {
+				int pgid = atoi(l->seq[0][1]);
+				if(pgid != 0){
+					job_t * j = get_job_by_pgid(pgid);
+					if(j==NULL){
+						fprintf(stderr, "%s: job %d doesn't exist\n", l->seq[0][0], pgid);
+						exit(1);
+					}
+					
+					if(new_state==ST){
+						Kill(-pgid, SIGTSTP);
+					}
+					else{
+						j->state = new_state;
+						Kill(-pgid, SIGCONT);
+					}
+				}else{
+					fprintf(stderr, "%s: bad arguments (Usage : fg %%[jid] or fg [pid])\n", l->seq[0][0]);
+					exit(1);
+				}
+			}
+			Sigprocmask(SIG_SETMASK, &prev_one, NULL);
+			goto wait;
+		}
+
 		for (int i=0; i<seq_l; i++) { // pour chaque commande d une suite de commandes
 
 			
@@ -193,11 +239,14 @@ int main(){
 					close(pipes[i][0]);
 					close(pipes[i][1]);
 				}
+
 				if(strcmp(l->seq[i][0], "jobs")==0){ // si la commande courrante est "jobs"
 					print_jobs();
 					exit(0);
+				} else {
+					execvp(l->seq[i][0], &(l->seq[i][0]));
 				}
-				else execvp(l->seq[i][0], &(l->seq[i][0]));
+
 				// gestion des erreur de exec
 				if (errno == ENOENT) {
 					fprintf(stderr, "%s: command not found\n", l->seq[i][0]);
@@ -225,11 +274,16 @@ int main(){
 
 		free(cmdline);
 
+		wait :
 		if(!l->is_on_backgr){
 			// tq il existe un job en premier plan
 			while(fg_job_jid()!=0){
+				// printf("fg_job_jid() : %d\n", fg_job_jid());
 				sleep(1);
 			}
+		}
+		else{
+			fprintf(stdout, "[%d] %d\n", get_job_by_pgid(pgid)->jid ,pgid);
 		}
 
 		/* Display each command of the pipe */
