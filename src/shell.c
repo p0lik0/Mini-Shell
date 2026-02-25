@@ -8,6 +8,7 @@
 #include "csapp.h"
 #include <signal.h>
 #include "job.h"
+#include <wordexp.h>
 
 #define MAX67 1024
 
@@ -178,7 +179,6 @@ int main(){
 				}
 			}
 
-
 			int pid;
 			if ((pid = Fork()) == 0) { //si fils
 				// unblock SIGCHLD
@@ -244,7 +244,19 @@ int main(){
 					print_jobs();
 					exit(0);
 				} else {
-					execvp(l->seq[i][0], &(l->seq[i][0]));
+					wordexp_t p;
+					char cmdline_i[1024] = "";
+
+					for (int j = 0; l->seq[i][j] != NULL; j++) {
+						strcat(cmdline_i, l->seq[i][j]);
+						strcat(cmdline_i, " ");
+					}
+					if (wordexp(cmdline_i, &p, 0) != 0) {
+						fprintf(stderr, "wordexp error\n");
+						exit(1);
+					}
+					execvp(p.we_wordv[0], p.we_wordv);
+					wordfree(&p);
 				}
 
 				// gestion des erreur de exec
@@ -268,7 +280,6 @@ int main(){
 			pids[i] = pid;
 		}
 		char * cmdline =  restore_cmdline(l->seq);
-
 		add_job(pgid, pids, seq_l, l->is_on_backgr ? BG : FG, cmdline);
 		Sigprocmask(SIG_SETMASK, &prev_one, NULL);
 
